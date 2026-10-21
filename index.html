@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DroneFlames: Стратегия</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background: #090d14; font-family: 'Segoe UI', Roboto, sans-serif; color: #fff; touch-action: none; }
+        #gameCanvas { display: block; width: 100%; height: 100%; }
+
+        /* Верхняя панель ресурсов (как в DroneFlames) */
+        #top-bar {
+            position: fixed; top: 8px; left: 8px; right: 8px;
+            background: rgba(18, 22, 30, 0.92); border: 1px solid #394254;
+            border-radius: 10px; padding: 6px 10px;
+            display: flex; align-items: center; justify-content: space-between;
+            font-size: 12px; font-weight: 700; z-index: 20;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+        }
+        .res-group { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .res-item { display: flex; align-items: center; gap: 4px; color: #e2e8f0; }
+        .btn-top {
+            background: #b8860b; color: #fff; border: 1px solid #ffd700;
+            padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 11px; cursor: pointer;
+        }
+
+        /* Баннер уведомлений и дипломатии */
+        #alert-box {
+            position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
+            width: 92%; max-width: 420px; background: rgba(16, 20, 28, 0.95);
+            border-left: 4px solid #ffcc00; border-radius: 6px;
+            padding: 8px 12px; font-size: 12px; text-align: center;
+            z-index: 20; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.7);
+        }
+
+        /* Карточка телеметрии баллистической ракеты */
+        #telemetry-card {
+            position: fixed; bottom: 88px; left: 50%; transform: translateX(-50%);
+            width: 92%; max-width: 380px; background: rgba(28, 32, 24, 0.95);
+            border: 2px solid #6b784e; border-radius: 10px; padding: 8px 14px;
+            z-index: 20; display: none; box-shadow: 0 6px 20px rgba(0,0,0,0.8);
+        }
+        #tel-title { font-size: 13px; font-weight: 800; color: #ffd700; }
+        #tel-phase { font-size: 11px; color: #a3e635; font-weight: 700; margin-top: 2px; }
+        #tel-speed { font-size: 14px; font-weight: 800; color: #ffffff; margin-top: 4px; }
+
+        /* Нижняя тактическая панель */
+        #bottom-bar {
+            position: fixed; bottom: 10px; left: 8px; right: 8px;
+            background: rgba(18, 22, 30, 0.95); border: 1px solid #394254;
+            border-radius: 12px; padding: 6px;
+            display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px;
+            z-index: 20; box-shadow: 0 6px 20px rgba(0,0,0,0.8);
+        }
+        .tac-btn {
+            background: #232a38; color: #e2e8f0; border: 1px solid #475569;
+            border-radius: 8px; padding: 7px 2px; font-size: 10px; font-weight: 700;
+            display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer;
+        }
+        .tac-btn.active { background: #7f1d1d; border-color: #ef4444; color: #fff; }
+        .tac-btn span.icon { font-size: 16px; }
+
+        /* Модальное окно Склада и Дипломатии */
+        #modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+            z-index: 50; display: none; align-items: center; justify-content: center; padding: 15px;
+        }
+        #modal-box {
+            background: #161b26; border: 1px solid #475569; border-radius: 12px;
+            width: 100%; max-width: 440px; max-height: 82vh; display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+        #modal-header {
+            padding: 12px 15px; background: #1e2536; border-bottom: 1px solid #334155;
+            display: flex; justify-content: space-between; align-items: center; font-weight: 800;
+        }
+        #modal-body { padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .row-card {
+            background: #222b3d; border: 1px solid #334155; border-radius: 8px;
+            padding: 8px 10px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;
+        }
+        .action-btn {
+            background: #2563eb; color: #fff; border: none; border-radius: 6px;
+            padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer;
+        }
+        .action-btn.war { background: #dc2626; }
+        .action-btn.trade { background: #16a34a; }
+    </style>
+</head>
+<body>
+
+    <!-- Верхняя панель ресурсов -->
+    <div id="top-bar">
+        <div class="res-group">
+            <div class="res-item">💰 <span id="ui-money">1050K</span></div>
+            <div class="res-item">⚡ <span id="ui-energy">6/6</span></div>
+            <div class="res-item">🚀 <span id="ui-missiles">4/6</span></div>
+            <div class="res-item">🛸 <span id="ui-drones">12</span></div>
+            <div class="res-item">🛥️ <span id="ui-boats">120</span></div>
+        </div>
+        <button class="btn-top" onclick="openWarehouseModal()">СКЛАД</button>
+    </div>
+
+    <!-- Уведомления -->
+    <div id="alert-box"></div>
+
+    <!-- Телеметрия ракеты -->
+    <div id="telemetry-card">
+        <div id="tel-title">Баллистическая ракета №1</div>
+        <div id="tel-phase">ПОЛЕТ</div>
+        <div id="tel-speed">М 1.5 - 0:23</div>
+    </div>
+
+    <!-- Игровой холст -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Нижняя панель управления -->
+    <div id="bottom-bar">
+        <button class="tac-btn" id="btn-missile" onclick="selectWeapon('missile')">
+            <span class="icon">🚀</span><span>ОТРК</span>
+        </button>
+        <button class="tac-btn" id="btn-drone" onclick="selectWeapon('drone')">
+            <span class="icon">🛸</span><span>УДАР БПЛА</span>
+        </button>
+        <button class="tac-btn" id="btn-boat" onclick="selectWeapon('boat')">
+            <span class="icon">🚤</span><span>КАТЕР БЭК</span>
+        </button>
+        <button class="tac-btn" onclick="openDiplomacyModal()">
+            <span class="icon">🏛️</span><span>СТРАНЫ (26)</span>
+        </button>
+        <button class="tac-btn" id="btn-night" onclick="toggleNight()">
+            <span class="icon">🌙</span><span>НОЧЬ</span>
+        </button>
+        <button class="tac-btn" onclick="downloadProjectZip()">
+            <span class="icon">📦</span><span>ZIP ФАЙЛ</span>
+        </button>
+    </div>
+
+    <!-- Модальное окно -->
+    <div id="modal-overlay">
+        <div id="modal-box">
+            <div id="modal-header">
+                <span id="modal-title">Управление</span>
+                <button class="action-btn war" onclick="closeModal()">✕</button>
+            </div>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Размеры глобальной карты
+const WORLD_W = 2600;
+const WORLD_H = 2600;
+
+// Камера (центрирована на стране игрока - Ринария)
+let cam = { x: 1300, y: 1300, zoom: 0.85 };
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Состояние игрока
+const game = {
+    money: 1050,
+    energy: 6,
+    energyMax: 6,
+    missiles: 4,
+    missilesMax: 6,
+    drones: 12,
+    boats: 120,
+    isNight: false,
+    weapon: null,
+    missileCounter: 0
+};
+
+// 26 вымышленных государств
+const nationNames = [
+    "РИНАРИЯ (ВЫ)", "ЛАНАНИЯ", "ПАНАНИЯ", "АРТУДАР", "ИЛНИКИЯ",
+    "ВЕСРИЯ", "КОРДАНИЯ", "НОРДМАРК", "ОСТВЕЛЬД", "САЛЬВАРИЯ",
+    "ТАРГОВИЯ", "ЭЛЬБРУСИЯ", "ФАЛЬКОНИЯ", "ДРАКОНИЯ", "ЗЕФИРИЯ",
+    "КРОНШТАТ", "ВАЛЬГАРИЯ", "МИРТОНИЯ", "ГРИМЛАНД", "СОЛЯРИЯ",
+    "АКВАТОРИЯ", "БЕРГШТЕЙН", "ЛЮМЕНИЯ", "ТЕНЕБРИЯ", "АВАНГАРДИЯ", "ОСТМАРК"
+];
+
+const resourcesList = ["Нефть", "Металл", "Газ", "Микрочипы", "Титан", "Уран"];
+const nations = [];
+const ships = [];
+const missiles = [];
+const strikeUnits = [];
+const interceptors = [];
+const explosions = [];
+const fires = [];
+
+// Генерация стран, кварталов, ТЭЦ, ПВО и флота
+function initWorld() {
+    const cols = 5;
+    const spacingX = 430;
+    const spacingY = 390;
+    const startX = 420;
+    const startY = 360;
+
+    for (let i = 0; i < nationNames.length; i++) {
+        let col = i % cols;
+        let row = Math.floor(i / cols);
+        let nx = (i === 0) ? 1300 : startX + col * spacingX + (Math.sin(i * 3) * 55);
+        let ny = (i === 0) ? 1300 : startY + row * spacingY + (Math.cos(i * 4) * 55);
+
+        // Генерируем пиксельные кварталы города вокруг центра
+        let blocks = [];
+        for (let b = 0; b < 24; b++) {
+            let bx = nx + ((b % 6) - 2.5) * 18 + (Math.sin(b * 7) * 4);
+            let by = ny + (Math.floor(b / 6) - 2) * 18 + (Math.cos(b * 5) * 4);
+            blocks.push({ x: bx, y: by, w: 12, h: 12 });
+        }
+
+        // Ключевые объекты инфраструктуры внутри страны
+        let infra = [
+            { type: "ТЭЦ", name: "ТЭЦ", x: nx - 45, y: ny - 35, hp: 100, maxHp: 100 },
+            { type: "ПВО", name: "ЗРК ПВО", x: nx + 45, y: ny - 35, hp: 100, maxHp: 100, cooldown: 0 },
+            { type: "ЗАВОД", name: "Завод", x: nx - 45, y: ny + 38, hp: 100, maxHp: 100 },
+            { type: "СКЛАД", name: "Склад", x: nx + 45, y: ny + 38, hp: 100, maxHp: 100 }
+        ];
+
+        nations.push({
+            id: i,
+            name: nationNames[i],
+            isPlayer: i === 0,
+            x: nx,
+            y: ny,
+            radius: 85,
+            hasPower: true,
+            relation: i === 0 ? 100 : (i === 1 ? -60 : Math.floor(Math.sin(i * 9) * 45)),
+            atWar: i === 1, // Ланания со старта враждебна, как в видео
+            tradePartner: false,
+            resource: resourcesList[i % resourcesList.length],
+            blocks: blocks,
+            infra: infra
+        });
+    }
+
+    // Создаем морской флот вокруг континента (в морской зоне по краям карты и в заливах)
+    const shipTypes = ["АВИАНОСЕЦ", "ЭСМИНЕЦ", "РАКЕТОНОСЕЦ", "КОРВЕТ"];
+    for (let s = 0; s < 14; s++) {
+        let angle = (s / 14) * Math.PI * 2;
+        let dist = 1080 + (s % 2) * 90;
+        let sx = 1300 + Math.cos(angle) * dist;
+        let sy = 1300 + Math.sin(angle) * dist;
+        let owner = nations[1 + (s % (nations.length - 1))];
+
+        ships.push({
+            id: s,
+            type: shipTypes[s % shipTypes.length],
+            ownerName: owner.name,
+            ownerId: owner.id,
+            x: sx,
+            y: sy,
+            angle: angle + Math.PI / 2,
+            dist: dist,
+            speed: 0.00018 + (s % 3) * 0.00006,
+            hp: s % 4 === 0 ? 200 : 100,
+            maxHp: s % 4 === 0 ? 200 : 100
+        });
+    }
+}
+initWorld();
+
+// Вспомогательные функции уведомлений и UI
+let alertTimeout = null;
+function notify(msg, color = "#ffcc00") {
+    const box = document.getElementById('alert-box');
+    box.style.borderLeftColor = color;
+    box.innerText = msg;
+    box.style.display = 'block';
+    clearTimeout(alertTimeout);
+    alertTimeout = setTimeout(() => { box.style.display = 'none'; }, 4000);
+}
+
+function updateUI() {
+    document.getElementById('ui-money').innerText = game.money + "K";
+    document.getElementById('ui-energy').innerText = `${game.energy}/${game.energyMax}`;
+    document.getElementById('ui-missiles').innerText = `${game.missiles}/${game.missilesMax}`;
+    document.getElementById('ui-drones').innerText = game.drones;
+    document.getElementById('ui-boats').innerText = game.boats;
+}
+
+function selectWeapon(type) {
+    game.weapon = (game.weapon === type) ? null : type;
+    document.querySelectorAll('.tac-btn').forEach(b => b.classList.remove('active'));
+    if (game.weapon) {
+        document.getElementById('btn-' + type).classList.add('active');
+        const names = {
+            missile: "ОТРК: Тапните по ТЭЦ или объекту врага для пуска баллистической ракеты!",
+            drone: "БПЛА: Тапните по цели для отправки ударного дрона!",
+            boat: "ФЛОТ: Тапните по вражескому кораблю в море для атаки безэкипажным катером (БЭК)!"
+        };
+        notify(names[type], "#ef4444");
+    }
+}
+
+function toggleNight() {
+    game.isNight = !game.isNight;
+    document.getElementById('btn-night').classList.toggle('active', game.isNight);
+    notify(game.isNight ? "Ночной режим: энергосети городов включены" : "Дневной режим", "#60a5fa");
+}
+
+// Пассивная экономика и предложения торговли (как в ролике)
+setInterval(() => {
+    let income = 15;
+    nations.forEach(n => { if (n.tradePartner && !n.atWar) income += 12; });
+    game.money += income;
+    updateUI();
+
+    if (Math.random() < 0.45) {
+        let candidates = nations.filter(n => !n.isPlayer && !n.atWar && !n.tradePartner);
+        if (candidates.length > 0) {
+            let c = candidates[Math.floor(Math.random() * candidates.length)];
+            c.tradePartner = true;
+            c.relation = Math.min(100, c.relation + 15);
+            notify(`${c.name} предлагает: ТОРГОВЫЙ ДОГОВОР. Излишки (${c.resource}) идут партнеру, цены для вас -10%, отношения растут!`, "#4ade80");
+        }
+    }
+}, 14000);
+
+// Сенсорное управление картой (Перемещение + Зум двумя пальцами + Тап по цели)
+let pointers = [];
+let lastPinchDist = 0;
+let startTapX = 0, startTapY = 0;
+let isDraggingMap = false;
+
+canvas.addEventListener('pointerdown', e => {
+    pointers.push(e);
+    if (pointers.length === 1) {
+        startTapX = e.clientX;
+        startTapY = e.clientY;
+        isDraggingMap = false;
+    }
+});
+
+canvas.addEventListener('pointermove', e => {
+    let idx = pointers.findIndex(p => p.pointerId === e.pointerId);
+    if (idx === -1) return;
+    let prev = pointers[idx];
+    pointers[idx] = e;
+
+    if (pointers.length === 1) {
+        let dx = e.clientX - prev.clientX;
+        let dy = e.clientY - prev.clientY;
+        if (Math.hypot(e.clientX - startTapX, e.clientY - startTapY) > 10) {
+            isDraggingMap = true;
+        }
+        if (isDraggingMap) {
+            cam.x = Math.max(100, Math.min(WORLD_W - 100, cam.x - dx / cam.zoom));
+            cam.y = Math.max(100, Math.min(WORLD_H - 100, cam.y - dy / cam.zoom));
+        }
+    } else if (pointers.length === 2) {
+        isDraggingMap = true;
+        let dist = Math.hypot(pointers[0].clientX - pointers[1].clientX, pointers[0].clientY - pointers[1].clientY);
+        if (lastPinchDist > 0) {
+            let scale = dist / lastPinchDist;
+            cam.zoom = Math.max(0.32, Math.min(1.8, cam.zoom * scale));
+        }
+        lastPinchDist = dist;
+    }
+});
+
+function handlePointerUp(e) {
+    pointers = pointers.filter(p => p.pointerId !== e.pointerId);
+    if (pointers.length < 2) lastPinchDist = 0;
+
+    if (!isDraggingMap && pointers.length === 0) {
+        let worldX = (e.clientX - canvas.width / 2) / cam.zoom + cam.x;
+        let worldY = (e.clientY - canvas.height / 2) / cam.zoom + cam.y;
+        onMapTap(worldX, worldY);
+    }
+}
+canvas.addEventListener('pointerup', handlePointerUp);
+canvas.addEventListener('pointercancel', handlePointerUp);
+
+canvas.addEventListener('wheel', e => {
+    cam.zoom = Math.max(0.32, Math.min(1.8, cam.zoom - e.deltaY * 0.001));
+});
+
+// Обработка удара по координатам карты
+function onMapTap(wx, wy) {
+    const playerNation = nations[0];
+
+    if (game.weapon === 'missile') {
+        if (game.missiles <= 0) { notify("На складе нет баллистических ракет! Произведите их в меню СКЛАД.", "#ef4444"); return; }
+        game.missiles--;
+        game.missileCounter++;
+
+        let dist = Math.hypot(wx - playerNation.x, wy - playerNation.y);
+        let duration = Math.max(8, Math.min(24, dist / 55));
+
+        missiles.push({
+            id: game.missileCounter,
+            startX: playerNation.x,
+            startY: playerNation.y,
+            x: playerNation.x,
+            y: playerNation.y,
+            targetX: wx,
+            targetY: wy,
+            elapsed: 0,
+            duration: duration
+        });
+
+        document.getElementById('telemetry-card').style.display = 'block';
+        notify("ОТРК пустил баллистическую ракету по цели!", "#f97316");
+        selectWeapon(null);
+        updateUI();
+    } else if (game.weapon === 'drone') {
+        if (game.drones <= 0) { notify("Нет ударных БПЛА на складе!", "#ef4444"); return; }
+        game.drones--;
+        strikeUnits.push({
+            type: 'drone',
+            x: playerNation.x,
+            y: playerNation.y,
+            targetX: wx,
+            targetY: wy,
+            speed: 130,
+            trail: []
+        });
+        notify("Наш ударный БПЛА вылетел по заданному маршруту!", "#f97316");
+        selectWeapon(null);
+        updateUI();
+    } else if (game.weapon === 'boat') {
+        if (game.boats <= 0) { notify("Нет безэкипажных катеров (БЭК)!", "#ef4444"); return; }
+        game.boats--;
+
+        // Ищем ближайший корабль врага около точки клика
+        let lockedShip = null;
+        let minDist = 260;
+        ships.forEach(s => {
+            let d = Math.hypot(s.x - wx, s.y - wy);
+            if (d < minDist) { minDist = d; lockedShip = s; }
+        });
+
+        // Катер стартует с побережья и идет к кораблю или береговой цели
+        let angleToTarget = Math.atan2(wy - 1300, wx - 1300);
+        let coastX = 1300 + Math.cos(angleToTarget) * 920;
+        let coastY = 1300 + Math.sin(angleToTarget) * 920;
+
+        strikeUnits.push({
+            type: 'boat',
+            x: coastX,
+            y: coastY,
+            targetX: wx,
+            targetY: wy,
+            lockedShip: lockedShip,
+            speed: 115,
+            trail: []
+        });
+        notify(lockedShip ? `Морской БЭК захватил цель: ${lockedShip.type} (${lockedShip.ownerName})!` : "Безэкипажный катер (БЭК) отправлен в заданный квадрат!", "#38bdf8");
+        selectWeapon(null);
+        updateUI();
+    }
+}
+
+// Проверка поражения объектов при взрыве
+function triggerExplosion(wx, wy, radius, damage, weaponLabel) {
+    explosions.push({ x: wx, y: wy, r: 5, maxR: radius, alpha: 1.0 });
+
+    // Проверка попадания по кораблям
+    for (let i = ships.length - 1; i >= 0; i--) {
+        let s = ships[i];
+        if (Math.hypot(s.x - wx, s.y - wy) <= radius + 28) {
+            s.hp -= damage;
+            let owner = nations[s.ownerId];
+            if (owner && !owner.isPlayer) { owner.relation -= 25; owner.atWar = true; }
+            if (s.hp <= 0) {
+                notify(`ФЛОТ ВРАГА: ${s.type} (${s.ownerName}) ПОТОПЛЕН ударом (${weaponLabel})!`, "#4ade80");
+                fires.push({ x: s.x, y: s.y, timer: 8 });
+                ships.splice(i, 1);
+            } else {
+                notify(`Попадание в ${s.type} (${s.ownerName})! Остаток прочности: ${s.hp}`, "#fbbf24");
+            }
+        }
+    }
+
+    // Проверка попадания по инфраструктуре стран
+    nations.forEach(n => {
+        if (n.isPlayer) return;
+        n.infra.forEach(inf => {
+            if (inf.hp > 0 && Math.hypot(inf.x - wx, inf.y - wy) <= radius + 26) {
+                inf.hp = Math.max(0, inf.hp - damage);
+                n.relation = Math.max(-100, n.relation - 35);
+                n.atWar = true;
+                n.tradePartner = false;
+                fires.push({ x: inf.x, y: inf.y, timer: 25 });
+
+                if (inf.hp <= 0) {
+                    if (inf.type === "ТЭЦ") {
+                        n.hasPower = false;
+                        notify(`Наш удар (${weaponLabel}) по (${n.name}), попадание в ТЭЦ — разрушен! В стране погас свет!`, "#ef4444");
+                    } else {
+                        notify(`Наш удар (${weaponLabel}) по (${n.name}), объект ${inf.name} — разрушен!`, "#f97316");
+                    }
+                } else {
+                    notify(`Объект ${inf.name} (${n.name}) поврежден! Прочность: ${inf.hp}%`, "#fbbf24");
+                }
+            }
+        });
+    });
+}
+
+// М
